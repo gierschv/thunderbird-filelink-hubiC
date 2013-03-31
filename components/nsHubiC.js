@@ -486,7 +486,8 @@ nsHubiC.prototype = {
     _wsGetHubicsSuccess = function(answer) {
       this.log.info('getHubics: ' + JSON.stringify(answer));
       if (answer.length === 0) {
-        this.log.info('getHubics: No hubiC for email ' + this._userName);
+        this.log.error('getHubics: No hubiC for email ' + this._userName);
+        failureCallback();
       }
       else {
         this._cachedNic = answer[0].nic;
