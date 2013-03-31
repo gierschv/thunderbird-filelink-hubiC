@@ -112,7 +112,6 @@ if [ -f "chrome.manifest" ]; then
   
   if [ "$OS" == "Darwin" ]; then
   	# OS X version of sed is not GNU... 
-  
     sed -i '' -E 's@^(content[ ]+[^ ]*[ ]+)([^ ]*/)$@\1jar:chrome/'$APP_NAME'\.jar\!/\2@' chrome.manifest
     sed -i '' -E 's@^(skin|locale)([ ]+[^ ]*[ ]+[^ ]*[ ]+)(.*/)$@\1\2jar:chrome/'$APP_NAME'\.jar\!/\3@' chrome.manifest
       
@@ -128,7 +127,6 @@ fi
 # generate the XPI file
 echo "Generating $APP_NAME.xpi..."
 zip -r ../$APP_NAME.xpi *
-cp ../$APP_NAME.xpi ~/Desktop
 
 cd "$ROOT_DIR"
 
