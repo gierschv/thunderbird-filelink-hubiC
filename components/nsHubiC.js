@@ -26,7 +26,7 @@ const kHubicId = "hubic service identifier";
 
 const kMaxFileSize = 1073741824; // hubiC, max 10G
 const kContainerPath = "/default"
-const kFilesPutPath = "/thunderbird-attachements/";
+const kFilesPutPath = "/thunderbird-attachements";
 
 var gWsUrl = "https://ws.ovh.com/";
 var gWsLogin = "sessionHandler/r4/ws.dispatcher";
@@ -671,36 +671,92 @@ nsHubiCFileUploader.prototype = {
    */
   uploadFile: function nsDFU_uploadFile() {
     this.requestObserver.onStartRequest(null, null);
-    this.log.info("ready to upload file " + wwwFormUrlEncode(this.file.leafName));
-    let fileHubic = kFilesPutPath + wwwFormUrlEncode(new Date().getTime() + '-' + this.file.leafName);
-    let url = this.hubic._cachedStorageUrl + kContainerPath + fileHubic;
-    
-    let fileContents = "";
-    let fstream = Cc["@mozilla.org/network/file-input-stream;1"]
-                     .createInstance(Ci.nsIFileInputStream);
-    fstream.init(this.file, -1, 0, 0);
-    let bufStream = Cc["@mozilla.org/network/buffered-input-stream;1"].
-      createInstance(Ci.nsIBufferedInputStream);
-    bufStream.init(fstream, this.file.fileSize);
-    bufStream = bufStream.QueryInterface(Ci.nsIInputStream);
+    this.createDirectory(function (created) {
+      if (!created) {
+        this.callback(this.requestObserver,
+                      Ci.nsIMsgCloudFileProvider.uploadErr);
+      }
 
-    let headers = [["Content-Length", fstream.available()],
-                   ["X-Auth-Token", this.hubic._cachedStorageToken]];
+      this.log.info("ready to upload file " + wwwFormUrlEncode(this.file.leafName));
+      let fileHubic = kFilesPutPath + '/' + wwwFormUrlEncode(new Date().getTime() + '-' + this.file.leafName);
+      let url = this.hubic._cachedStorageUrl + kContainerPath + fileHubic;
+      
+      let fileContents = "";
+      let fstream = Cc["@mozilla.org/network/file-input-stream;1"]
+                       .createInstance(Ci.nsIFileInputStream);
+      fstream.init(this.file, -1, 0, 0);
+      let bufStream = Cc["@mozilla.org/network/buffered-input-stream;1"].
+        createInstance(Ci.nsIBufferedInputStream);
+      bufStream.init(fstream, this.file.fileSize);
+      bufStream = bufStream.QueryInterface(Ci.nsIInputStream);
 
-    this.request = doXHRequest(url, headers, bufStream,
+      let headers = [["Content-Length", fstream.available()],
+                     ["X-Auth-Token", this.hubic._cachedStorageToken]];
+
+      this.request = doXHRequest(url, headers, bufStream,
+        function(aResponseText, aRequest) {
+          this.request = null;
+          this.log.info("success putting file " + aResponseText);
+          this.hubic._uploadInfo[this.file.path] = fileHubic;
+          this._getShareUrl.call(this.hubic, this.file, fileHubic, this.callback);
+        }.bind(this),
+        function(aException, aResponseText, aRequest) {
+          this.request = null;
+          this.log.info("failed putting file response = " + aResponseText);
+          if (this.callback) {
+            this.callback(this.requestObserver,
+                          Ci.nsIMsgCloudFileProvider.uploadErr);
+          }
+        }.bind(this), this, 'PUT'
+      );
+    }.bind(this));
+  },
+
+  /**
+   * Create upload directory if not exists
+   */
+  createDirectory: function nsDFU_createDirectory(callback) {
+    this.directoryExists(function (exists) {
+      if (exists) {
+        return callback(true);
+      }
+
+      let headers = [["Content-Length", 0],
+                     ["Content-Type", "application/directory"],
+                     ["X-Auth-Token", this.hubic._cachedStorageToken]];
+      let url = this.hubic._cachedStorageUrl + kContainerPath + kFilesPutPath;
+      this.request = doXHRequest(url, headers, null,
+        function(aResponseText, aRequest) {
+          this.request = null;
+          this.log.info("upload directory created");
+          callback(true);
+        }.bind(this),
+        function(aException, aResponseText, aRequest) {
+          this.request = null;
+          this.log.info("fail to create upload directory");
+          callback(false);
+        }.bind(this), this, 'PUT'
+      );
+    }.bind(this));
+  },
+
+  /**
+   * Check if upload directory exists
+   */
+  directoryExists: function nsDFU_directoryExists(callback) {
+    let headers = [["X-Auth-Token", this.hubic._cachedStorageToken]];
+    let url = this.hubic._cachedStorageUrl + kContainerPath + kFilesPutPath;
+    this.request = doXHRequest(url, headers, null,
       function(aResponseText, aRequest) {
         this.request = null;
-        this.log.info("success putting file " + aResponseText);
-        this.hubic._uploadInfo[this.file.path] = fileHubic;
-        this._getShareUrl.call(this.hubic, this.file, fileHubic, this.callback);
+        this.log.info("upload directory exists");
+        callback(true);
       }.bind(this),
       function(aException, aResponseText, aRequest) {
         this.request = null;
-        this.log.info("failed putting file response = " + aResponseText);
-        if (this.callback)
-          this.callback(this.requestObserver,
-                        Ci.nsIMsgCloudFileProvider.uploadErr);
-      }.bind(this), this, 'PUT'
+        this.log.info("upload directory don't exists");
+        callback(false);
+      }.bind(this), this, 'HEAD'
     );
   },
 
