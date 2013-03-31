@@ -579,7 +579,7 @@ nsHubiC.prototype = {
   _wsNewPublication: function nsHubic_wsHubicNewPublication(sessionId, hubicId, fileResource, successCallback, failureCallback) {
     return this._wsRequest(gWsUrl + gWsHubic + '/newPublication',
                            { sessionId: sessionId, hubicId: hubicId, fileResource: fileResource,
-                             publicationParameters: { fileResourceType: 'file' }, containerName: 'default' },
+                             publicationParameters: { fileResourceType: 'file', delay: 30 }, containerName: 'default' },
                            successCallback, failureCallback);
   },
 
