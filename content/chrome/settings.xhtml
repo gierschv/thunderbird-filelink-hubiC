@@ -5,17 +5,26 @@
 
 <!DOCTYPE html [
   <!ENTITY % htmlDTD PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "DTD/xhtml1-strict.dtd"> %htmlDTD;
-  <!ENTITY % dbDTD SYSTEM "chrome://dropbox/locale/settings.dtd"> %dbDTD;
+  <!ENTITY % dbDTD SYSTEM "chrome://hubiC/locale/settings.dtd"> %dbDTD;
 ]>
 <html xmlns="http://www.w3.org/1999/xhtml">
   <head>
+    <script type="application/javascript"
+            src="chrome://hubiC/content/settings.js" />
     <link rel="stylesheet"
         type="text/css"
         href="chrome://messenger/skin/cloudfile/addAccountDialog.css" />
   </head>
   <body id="provider-settings">
-    <div id="learn-more">
-      <a href="https://www.dropbox.com/">&dropboxSettings.learnMore;</a>
+    <form id="provider-form" onsubmit="return false;">
+      <label for="username">&hubiCSettings.username;</label>
+      <input id="username" type="text" required="true" />
+    </form>
+    <div id="learn-more" class="float-right">
+      <a href="http://www.ovh.fr/hubiC/">&hubiCSettings.learnMore;</a>
+    </div>
+    <div>
+      <a href="http://www.ovh.fr/hubiC/souscrire.xml?offer=25g">&hubiCSettings.needAnAccount;</a>
     </div>
   </body>
 </html>

@@ -6,14 +6,14 @@
 <!DOCTYPE html [
   <!ENTITY % htmlDTD PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "DTD/xhtml1-strict.dtd"> %htmlDTD;
   <!ENTITY % managementDTD SYSTEM "chrome://messenger/locale/cloudfile/management.dtd"> %managementDTD;
-  <!ENTITY % dropboxDTD SYSTEM "chrome://dropbox/locale/management.dtd"> %dropboxDTD;
+  <!ENTITY % hubiCDTD SYSTEM "chrome://hubiC/locale/management.dtd"> %hubiCDTD;
 ]>
 <html xmlns="http://www.w3.org/1999/xhtml">
   <head>
     <script type="application/javascript;version=1.8"
             src="chrome://messenger/content/protovis-r2.6-modded.js"/>
     <script type="text/javascript;version=1.8"
-            src="chrome://dropbox/content/management.js"/>
+            src="chrome://hubiC/content/management.js"/>
     <link rel="stylesheet"
         type="text/css"
         href="chrome://messenger/skin/preferences/preferences.css" />
@@ -21,11 +21,10 @@
   <body id="provider-management">
     <div id="provider-header">
       <div id="provider-terms">
-      <a href="https://www.dropbox.com/terms#privacy">&cloudfileMgmt.privacyPolicy;</a>
-      <a href="https://www.dropbox.com/terms#terms">&cloudfileMgmt.termsOfService;</a>
+        <a href="http://www.ovh.com/fr/support/documents_legaux/Contrat_HUBIC.pdf">&cloudfileMgmt.termsOfService;</a>
       </div>
       <div id="provider-name">
-      <h1>Dropbox</h1>
+        <h1><img src="chrome://hubiC/content/hubic-ovh.png" alt="hubiC" /></h1>
       </div>
     </div>
     <div id="provider-spacebox">
@@ -43,6 +42,6 @@
         </div>
       </div>
    </div>
-   <div id="provider-account-settings"><a href="https://www.dropbox.com/account#settings">&dropboxMgmt.viewSettings;</a></div> 
+   <div id="provider-account-settings"><a href="https://app.hubic.me/">&hubiCMgmt.viewSettings;</a></div> 
   </body>
 </html>

@@ -3,8 +3,8 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><RDF xmlns="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:em="http://www.mozilla.org/2004/em-rdf#">
   <Description about="urn:mozilla:install-manifest">
-    <em:id>thunderbird-filelink-dropbox@mikeconley.ca</em:id>
-    <em:version>1.0.1</em:version>
+    <em:id>thunderbird-filelink-hubic@vincent.sh</em:id>
+    <em:version>0.1</em:version>
     <em:type>2</em:type>
     <em:unpack>false</em:unpack>
 
@@ -12,14 +12,15 @@
     <em:targetApplication>
       <Description>
         <em:id>{3550f703-e582-4d05-9a08-453d09bdfdc6}</em:id> <!-- Thunderbird -->
-        <em:minVersion>13.0</em:minVersion>
-        <em:maxVersion>17.0a1</em:maxVersion>
+        <em:minVersion>13.*</em:minVersion>
+        <em:maxVersion>17.*</em:maxVersion>
       </Description>
     </em:targetApplication>
 
     <!-- Front End MetaData -->
-    <em:name>Dropbox for Filelink</em:name>
-    <em:description>Add Dropbox support to Thunderbird's Filelink feature.</em:description>
-    <em:creator>Mike Conley</em:creator>
+    <em:name>hubiC for Filelink</em:name>
+    <em:iconURL>chrome://hubiC/content/hubic-32.png</em:iconURL>
+    <em:description>Add hubiC support to Thunderbird's Filelink feature.</em:description>
+    <em:creator>Vincent Giersch, based on Dropbox for Filelink by Mike Conley</em:creator>
   </Description>
 </RDF>

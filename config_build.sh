@@ -2,7 +2,7 @@
 
 # Build config for the build script, build.sh. Look there for more info.
 
-APP_NAME=thunderbird-filelink-dropbox
+APP_NAME=thunderbird-filelink-hubiC
 CHROME_PROVIDERS="content locale"
 CLEAN_UP=1
 ROOT_FILES=
