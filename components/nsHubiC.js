@@ -673,8 +673,8 @@ nsHubiCFileUploader.prototype = {
     this.requestObserver.onStartRequest(null, null);
     this.createDirectory(function (created) {
       if (!created) {
-        this.callback(this.requestObserver,
-                      Ci.nsIMsgCloudFileProvider.uploadErr);
+        return this.callback(this.requestObserver,
+                             Ci.nsIMsgCloudFileProvider.uploadErr);
       }
 
       this.log.info("ready to upload file " + wwwFormUrlEncode(this.file.leafName));
@@ -698,7 +698,8 @@ nsHubiCFileUploader.prototype = {
           this.request = null;
           this.log.info("success putting file " + aResponseText);
           this.hubic._uploadInfo[this.file.path] = fileHubic;
-          this._getShareUrl.call(this.hubic, this.file, fileHubic, this.callback);
+          this._getShareUrl.call(this.hubic, this.file, fileHubic,
+                                 this.callback, this.requestObserver);
         }.bind(this),
         function(aException, aResponseText, aRequest) {
           this.request = null;
@@ -785,7 +786,7 @@ nsHubiCFileUploader.prototype = {
    * @param aCallback an nsIRequestObserver for monitoring the starting and
    *                  ending states of the URL retrieval request.
    */
-  _getShareUrl: function nsDFU_getShareUrl(aFile, file, aCallback) {
+  _getShareUrl: function nsDFU_getShareUrl(aFile, file, aCallback, aRequestObserver) {
     this.file = aFile;
 
     // Password
@@ -800,7 +801,7 @@ nsHubiCFileUploader.prototype = {
 
     // WS
     let _wsFailure = function() {
-      aCallback(this.requestObserver, Cr.NS_ERROR_FAILURE);
+      aCallback(aRequestObserver, Cr.NS_ERROR_FAILURE);
     }
 
     this._wsLogin(this._cachedNic, this._password, 
@@ -810,7 +811,7 @@ nsHubiCFileUploader.prototype = {
           function(answer) {
             this.log.info('newPublication: ' + JSON.stringify(answer));
             this._urlsForFiles[this.file.path] = answer.indirectUrl;
-            aCallback(this.requestObserver, Cr.NS_OK);
+            aCallback(aRequestObserver, Cr.NS_OK);
           }.bind(this), _wsFailure.bind(this)
         );
       }.bind(this), _wsFailure.bind(this)
