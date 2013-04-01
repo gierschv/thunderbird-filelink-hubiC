@@ -715,6 +715,7 @@ nsHubiCFileUploader.prototype = {
 
   /**
    * Create upload directory if not exists
+   * It don't use doXHRequest to be able to overrideMimeType without charset
    */
   createDirectory: function nsDFU_createDirectory(callback) {
     this.directoryExists(function (exists) {
@@ -722,22 +723,31 @@ nsHubiCFileUploader.prototype = {
         return callback(true);
       }
 
-      let headers = [["Content-Length", 0],
-                     ["Content-Type", "application/directory"],
-                     ["X-Auth-Token", this.hubic._cachedStorageToken]];
-      let url = this.hubic._cachedStorageUrl + kContainerPath + kFilesPutPath;
-      this.request = doXHRequest(url, headers, null,
-        function(aResponseText, aRequest) {
-          this.request = null;
+      let xhr = Cc["@mozilla.org/xmlextras/xmlhttprequest;1"]
+                    .createInstance(Ci.nsIXMLHttpRequest);
+      xhr.mozBackgroundRequest = true;
+      xhr.open('PUT', this.hubic._cachedStorageUrl + kContainerPath + kFilesPutPath);
+      xhr.setRequestHeader("Content-Length", 0);
+      xhr.setRequestHeader("X-Auth-Token", this.hubic._cachedStorageToken);
+      xhr.setRequestHeader("Content-Type", "application/directory");
+      xhr.overrideMimeType("application/directory");
+
+      xhr.onerror = function(aRequest) {
+        this.log.info("fail to create upload directory");
+        callback(false);
+      }.bind(this);
+
+      xhr.onload = function(aRequest) {
+        if (aRequest.target.status < 200 || aRequest.target.status >= 300) {
+          xhr.onerror(aRequest);
+        }
+        else {
           this.log.info("upload directory created");
           callback(true);
-        }.bind(this),
-        function(aException, aResponseText, aRequest) {
-          this.request = null;
-          this.log.info("fail to create upload directory");
-          callback(false);
-        }.bind(this), this, 'PUT'
-      );
+        }
+      }.bind(this);
+
+      xhr.send();
     }.bind(this));
   },
 
