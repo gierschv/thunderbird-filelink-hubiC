@@ -690,7 +690,16 @@ nsHubiCFileUploader.prototype = {
       bufStream.init(fstream, this.file.fileSize);
       bufStream = bufStream.QueryInterface(Ci.nsIInputStream);
 
+      let mimeType = "text/plain";
+      try {
+        let mimeService = Components.classes["@mozilla.org/mime;1"]
+                .getService(Components.interfaces.nsIMIMEService);
+        mimeType = mimeService.getTypeFromFile(this.file);
+      }
+      catch(e) { /* just use text/plain */ }
+
       let headers = [["Content-Length", fstream.available()],
+                     ["Content-Type", mimeType],
                      ["X-Auth-Token", this.hubic._cachedStorageToken]];
 
       this.request = doXHRequest(url, headers, bufStream,
