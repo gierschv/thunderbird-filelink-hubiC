@@ -305,6 +305,8 @@ nsHubiC.prototype = {
             this.log.info('getHubic: ' + JSON.stringify(answer));
             this._totalStorage = answer.quota;
             this._fileSpaceUsed = answer.used;
+            this._cachedStorageToken = answer.credentials.secret;
+            this._cachedStorageUrl = atob(answer.credentials.username);
             successCallback();
           }.bind(this), failureCallback);
       }.bind(this), failureCallback);
