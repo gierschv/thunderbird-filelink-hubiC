@@ -8,14 +8,11 @@
  * nsIMsgCloudFileProvider interface.
  */
 
-const Cc = Components.classes;
-const Ci = Components.interfaces;
-const Cu = Components.utils;
-const Cr = Components.results;
+const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
 
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource:///modules/http.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
+Cu.import("resource:///modules/http.jsm");
 Cu.import("resource:///modules/gloda/log4moz.js");
 Cu.import("resource:///modules/cloudFileAccounts.js");
 
@@ -26,11 +23,12 @@ const kHubicId = "hubic service identifier";
 
 const kMaxFileSize = 1073741824; // hubiC, max 10G
 const kContainerPath = "/default"
-const kFilesPutPath = "/thunderbird-attachements";
+var kFilesPutPath = "/thunderbird-attachements";
+var kPublicationDelay = 30;
 
-var gWsUrl = "https://ws.ovh.com/";
-var gWsLogin = "sessionHandler/r4/ws.dispatcher";
-var gWsHubic = "hubic/r5/ws.dispatcher";
+const gWsUrl = "https://ws.ovh.com/";
+const gWsLogin = "sessionHandler/r4/ws.dispatcher";
+const gWsHubic = "hubic/r5/ws.dispatcher";
 
 function wwwFormUrlEncode(aStr) {
   return encodeURIComponent(aStr).replace(/!/g, '%21')
@@ -67,10 +65,6 @@ nsHubiC.prototype = {
   _loggedIn: false,
   _userInfo: null,
   _file : null,
-  _requestDate: null,
-  _successCallback: null,
-  _connection: null,
-  _request: null,
   _uploadingFile : null,
   _uploader : null,
   _lastErrorStatus : 0,
@@ -88,11 +82,26 @@ nsHubiC.prototype = {
    * @param aAccountKey the account key to initialize this provider with
    */
   init: function nsHubiC_init(aAccountKey) {
+    // Account
     this._accountKey = aAccountKey;
     this._prefBranch = Services.prefs.getBranch("mail.cloud_files.accounts." +
                                                 aAccountKey + ".");
     this._userName = this._prefBranch.getCharPref("username");
     this._loggedIn = this._cachedAuthToken != "";
+
+    // hubiC preferences
+    this._prefBranch = Services.prefs.getBranch("extensions.hubic.");
+    if (!this._prefBranch.prefHasUserValue("publicationDelay") ||
+        this._prefBranch.getIntPref("publicationDelay") === 0) {
+      this._prefBranch.setIntPref("publicationDelay", kPublicationDelay);
+    }
+
+    if (!this._prefBranch.prefHasUserValue("filesPutPath")) {
+      this._prefBranch.setCharPref("filesPutPath", kFilesPutPath);
+    }
+
+    kPublicationDelay = this._prefBranch.getIntPref("publicationDelay");
+    kFilesPutPath = this._prefBranch.getCharPref("filesPutPath");
   },
 
   /**
@@ -299,10 +308,10 @@ nsHubiC.prototype = {
     // WS
     this._wsLogin(this._cachedNic, this._password,
       function(answer) {
-        this.log.info('login: ' + JSON.stringify(answer));
+        this.log.debug("login: " + JSON.stringify(answer));
         this._wsGetHubic(answer.session.id, this._cachedHubicId,
           function(answer) {
-            this.log.info('getHubic: ' + JSON.stringify(answer));
+            this.log.debug("getHubic: " + JSON.stringify(answer));
             this._totalStorage = answer.quota;
             this._fileSpaceUsed = answer.used;
             this._cachedStorageToken = answer.credentials.secret;
@@ -452,7 +461,7 @@ nsHubiC.prototype = {
         this.request = null;
         this.log.info("failed deleting file response = " + aResponseText);
         aCallback.onStopRequest(null, null, Ci.nsIMsgCloudFileProvider.uploadErr);
-      }.bind(this), this, 'DELETE'
+      }.bind(this), this, "DELETE"
     );
   },
 
@@ -481,34 +490,33 @@ nsHubiC.prototype = {
     let _wsAnonymousSessionSuccess, _wsGetHubicsSuccess, _wsLoginSuccess, _wsGetHubicSuccess;
 
     _wsAnonymousSessionSuccess = function(answer) {
-      this.log.info('Anonymous session: ' + JSON.stringify(answer));
+      this.log.info("Anonymous session: " + JSON.stringify(answer));
       this._wsGetHubics(answer.session.id, _wsGetHubicsSuccess.bind(this), failureCallback);
     };
 
     _wsGetHubicsSuccess = function(answer) {
-      this.log.info('getHubics: ' + JSON.stringify(answer));
+      this.log.info("getHubics: " + JSON.stringify(answer));
       if (answer.length === 0) {
-        this.log.error('getHubics: No hubiC for email ' + this._userName);
+        this.log.error("getHubics: No hubiC for email " + this._userName);
         failureCallback();
       }
       else {
         this._cachedNic = answer[0].nic;
         this._cachedHubicId = answer[0].id;
-        this.log.info('getHubics: ' + this._cachedNic + ' / ' + this._cachedHubicId);
+        this.log.info("getHubics: " + this._cachedNic + " / " + this._cachedHubicId);
         this._wsLogin(this._cachedNic, this._password, _wsLoginSuccess.bind(this), failureCallback);
       }
     };
 
     _wsLoginSuccess = function(answer) {
-      this.log.info('login: ' + JSON.stringify(answer));
+      this.log.info("login: " + JSON.stringify(answer));
       this._wsGetHubic(answer.session.id, this._cachedHubicId,
                        _wsGetHubicSuccess.bind(this), failureCallback);
     };
 
     _wsGetHubicSuccess = function(answer) {
-      this.log.info('getHubic: ' + JSON.stringify(answer));
-      this.log.info('Secret = ' + answer.credentials.secret);
-      this.log.info('URL = ' + atob(answer.credentials.username));
+      this._totalStorage = answer.quota;
+      this._fileSpaceUsed = answer.used;
       this._cachedStorageToken = answer.credentials.secret;
       this._cachedStorageUrl = atob(answer.credentials.username);
       successCallback();
@@ -518,25 +526,25 @@ nsHubiC.prototype = {
   },
 
   _wsRequest: function nsHubic_wsRequest(url, params, successCallback, failureCallback) {
-    this.log.info('Sending WS request to: ' + url);
-    let callUrl = url + '?params=' + wwwFormUrlEncode(JSON.stringify(params));
+    this.log.info("Sending WS request to: " + url);
+    let callUrl = url + "?params=" + wwwFormUrlEncode(JSON.stringify(params));
     let request = doXHRequest(callUrl, null, null,
       function(aResponseText) {
         let response = JSON.parse(aResponseText);
         if (response.error) {
-          this.log.error('WS Error:' + response.error.message);
+          this.log.error("WS Error:" + response.error.message);
           if (failureCallback !== undefined) {
             return failureCallback(response.error.message);
           }
         }
         else {
-          this.log.info('WS success on request to: ' + url);
+          this.log.info("WS success on request to: " + url);
           if (successCallback !== undefined) {
             return successCallback(response.answer);
           }
         }
       }.bind(this),
-      failureCallback, this, 'GET'
+      failureCallback, this, "GET"
     );
   },
 
@@ -544,7 +552,7 @@ nsHubiC.prototype = {
    * ws : sessionHandler/getAnonymousSession
    */
   _wsAnonymousSession: function nsHubic_wsSessionHandlerAnonymousSession(successCallback, failureCallback) {
-    return this._wsRequest(gWsUrl + gWsLogin + '/getAnonymousSession', {},
+    return this._wsRequest(gWsUrl + gWsLogin + "/getAnonymousSession", {},
                            successCallback, failureCallback);
   },
 
@@ -552,8 +560,8 @@ nsHubiC.prototype = {
    * ws : sessionHandler/login
    */
   _wsLogin: function nsHubic_wsSessionHandlerLogin(login, password, successCallback, failureCallback) {
-    return this._wsRequest(gWsUrl + gWsLogin + '/login',
-                           { login: login, password: password, context: 'hubic' },
+    return this._wsRequest(gWsUrl + gWsLogin + "/login",
+                           { login: login, password: password, context: "hubic" },
                            successCallback, failureCallback);
   },
 
@@ -561,7 +569,7 @@ nsHubiC.prototype = {
    * ws : hubic/getHubics
    */
   _wsGetHubics: function nsHubic_wsHubicGetHubics(sessionId, successCallback, failureCallback) {
-    return this._wsRequest(gWsUrl + gWsHubic + '/getHubics',
+    return this._wsRequest(gWsUrl + gWsHubic + "/getHubics",
                            { sessionId: sessionId, email: this._userName },
                            successCallback, failureCallback);
   },
@@ -570,7 +578,7 @@ nsHubiC.prototype = {
    * ws : hubic/getHubic
    */
   _wsGetHubic: function nsHubic_wsHubicGetHubic(sessionId, hubicId, successCallback, failureCallback) {
-    return this._wsRequest(gWsUrl + gWsHubic + '/getHubic',
+    return this._wsRequest(gWsUrl + gWsHubic + "/getHubic",
                            { sessionId: sessionId, hubicId: hubicId },
                            successCallback, failureCallback);
   },
@@ -579,9 +587,9 @@ nsHubiC.prototype = {
    * ws : hubic/newPublication
    */
   _wsNewPublication: function nsHubic_wsHubicNewPublication(sessionId, hubicId, fileResource, successCallback, failureCallback) {
-    return this._wsRequest(gWsUrl + gWsHubic + '/newPublication',
+    return this._wsRequest(gWsUrl + gWsHubic + "/newPublication",
                            { sessionId: sessionId, hubicId: hubicId, fileResource: fileResource,
-                             publicationParameters: { fileResourceType: 'file', delay: 30 }, containerName: 'default' },
+                             publicationParameters: { fileResourceType: "file", delay: kPublicationDelay }, containerName: "default" },
                            successCallback, failureCallback);
   },
 
@@ -673,7 +681,7 @@ nsHubiCFileUploader.prototype = {
    */
   uploadFile: function nsDFU_uploadFile() {
     this.requestObserver.onStartRequest(null, null);
-    this.createDirectory(function (created) {
+    this.createDirectory(kFilesPutPath, function (created) {
       if (!created) {
         return this.callback(this.requestObserver,
                              Ci.nsIMsgCloudFileProvider.uploadErr);
@@ -707,19 +715,20 @@ nsHubiCFileUploader.prototype = {
       this.request = doXHRequest(url, headers, bufStream,
         function(aResponseText, aRequest) {
           this.request = null;
-          this.log.info("success putting file " + aResponseText);
+          this.log.info("Success putting file " + aResponseText);
           this.hubic._uploadInfo[this.file.path] = fileHubic;
           this._getShareUrl.call(this.hubic, this.file, fileHubic,
                                  this.callback, this.requestObserver);
         }.bind(this),
         function(aException, aResponseText, aRequest) {
           this.request = null;
-          this.log.info("failed putting file response = " + aResponseText);
+          this.log.info("Failed putting file response = " +
+                        aRequest.status + " / " + aResponseText + " / " + aException);
           if (this.callback) {
             this.callback(this.requestObserver,
                           Ci.nsIMsgCloudFileProvider.uploadErr);
           }
-        }.bind(this), this, 'PUT'
+        }.bind(this), this, "PUT"
       );
     }.bind(this));
   },
@@ -728,57 +737,84 @@ nsHubiCFileUploader.prototype = {
    * Create upload directory if not exists
    * It don't use doXHRequest to be able to overrideMimeType without charset
    */
-  createDirectory: function nsDFU_createDirectory(callback) {
-    this.directoryExists(function (exists) {
-      if (exists) {
-        return callback(true);
+  createDirectory: function nsDFU_createDirectory(dir, callback) {
+    var aDir = dir.split('/'), remaining = 0, result = true;
+
+    var createDirectoryProcess = function(dir, exists) {
+      if (!exists) {
+        let xhr = Cc["@mozilla.org/xmlextras/xmlhttprequest;1"]
+                    .createInstance(Ci.nsIXMLHttpRequest);
+        xhr.mozBackgroundRequest = true;
+        xhr.open("PUT", this.hubic._cachedStorageUrl + kContainerPath + dir);
+        xhr.setRequestHeader("Content-Length", 0);
+        this.log.info("X-Auth-Token: " + this.hubic._cachedStorageToken);
+        xhr.setRequestHeader("X-Auth-Token", this.hubic._cachedStorageToken);
+        xhr.setRequestHeader("Content-Type", "application/directory");
+        xhr.overrideMimeType("application/directory");
+
+        xhr.onerror = function(aRequest) {
+          this.log.error("Fail to create upload directory: " +
+                         aRequest.target.status + " / " + aRequest.target.statusText);
+          result = false;
+        }.bind(this);
+
+        xhr.onload = function(aRequest) {
+          if (aRequest.target.status < 200 || aRequest.target.status >= 300) {
+            xhr.onerror(aRequest);
+          }
+          else {
+            this.log.info("Directory created: " + dir);
+          }
+
+          if (--remaining === 0) {
+            callback(result);
+          }
+        }.bind(this);
+
+        xhr.send();
+      }
+      else if (--remaining === 0) {
+        callback(result);
+      }
+    };
+
+    for (var i = 0; i < aDir.length ; i++) {
+      if (aDir[i].length !== 0) {
+        remaining++;
+      }
+    }
+
+    dir = '';
+    for (var i = 0; i < aDir.length ; i++) {
+      if (aDir[i].length === 0) {
+        continue;
       }
 
-      let xhr = Cc["@mozilla.org/xmlextras/xmlhttprequest;1"]
-                    .createInstance(Ci.nsIXMLHttpRequest);
-      xhr.mozBackgroundRequest = true;
-      xhr.open('PUT', this.hubic._cachedStorageUrl + kContainerPath + kFilesPutPath);
-      xhr.setRequestHeader("Content-Length", 0);
-      xhr.setRequestHeader("X-Auth-Token", this.hubic._cachedStorageToken);
-      xhr.setRequestHeader("Content-Type", "application/directory");
-      xhr.overrideMimeType("application/directory");
-
-      xhr.onerror = function(aRequest) {
-        this.log.info("fail to create upload directory");
-        callback(false);
-      }.bind(this);
-
-      xhr.onload = function(aRequest) {
-        if (aRequest.target.status < 200 || aRequest.target.status >= 300) {
-          xhr.onerror(aRequest);
-        }
-        else {
-          this.log.info("upload directory created");
-          callback(true);
-        }
-      }.bind(this);
-
-      xhr.send();
-    }.bind(this));
+      kFilesPutPath = dir += '/' + aDir[i];
+      if (i === aDir.length - 1) {
+        this.hubic._prefBranch.setCharPref("filesPutPath", kFilesPutPath);
+      }
+      this.directoryExists(dir, createDirectoryProcess.bind(this));
+    }
   },
 
   /**
    * Check if upload directory exists
    */
-  directoryExists: function nsDFU_directoryExists(callback) {
+  directoryExists: function nsDFU_directoryExists(dir, callback) {
     let headers = [["X-Auth-Token", this.hubic._cachedStorageToken]];
-    let url = this.hubic._cachedStorageUrl + kContainerPath + kFilesPutPath;
+    let url = this.hubic._cachedStorageUrl + kContainerPath + dir;
     this.request = doXHRequest(url, headers, null,
       function(aResponseText, aRequest) {
         this.request = null;
-        this.log.info("upload directory exists");
-        callback(true);
+        this.log.debug("Upload directory exists: " + dir);
+        callback(dir, true);
       }.bind(this),
       function(aException, aResponseText, aRequest) {
         this.request = null;
-        this.log.info("upload directory don't exists");
-        callback(false);
-      }.bind(this), this, 'HEAD'
+        this.log.debug("Upload directory don't exists: " + dir);
+        callback(dir, false);
+      }.bind(this), this, "HEAD"
     );
   },
 
@@ -827,10 +863,10 @@ nsHubiCFileUploader.prototype = {
 
     this._wsLogin(this._cachedNic, this._password, 
       function(answer) {
-        this.log.info('login: ' + JSON.stringify(answer));
+        this.log.info("login: " + JSON.stringify(answer));
         this._wsNewPublication(answer.session.id, this._cachedHubicId, file,
           function(answer) {
-            this.log.info('newPublication: ' + JSON.stringify(answer));
+            this.log.info("newPublication: " + JSON.stringify(answer));
             this._urlsForFiles[this.file.path] = answer.indirectUrl;
             aCallback(aRequestObserver, Cr.NS_OK);
           }.bind(this), _wsFailure.bind(this)

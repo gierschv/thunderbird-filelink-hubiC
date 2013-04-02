@@ -2,4 +2,6 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this file,
    - You can obtain one at http://mozilla.org/MPL/2.0/.  
 -->
-<!ENTITY hubiCMgmt.viewSettings "Mon compte hubiC">
+<!ENTITY hubiCMgmt.viewAccount "Mon compte hubiC">
+<!ENTITY hubiCMgmt.usedSpace "Espace utilisé">
+<!ENTITY hubiCMgmt.preferences "Préférences">

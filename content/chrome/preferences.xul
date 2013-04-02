@@ -1,0 +1,41 @@
+<?xml version="1.0"?>
+<!--# This Source Code Form is subject to the terms of the Mozilla Public
+    # License, v. 2.0. If a copy of the MPL was not distributed with this file,
+    # You can obtain one at http://mozilla.org/MPL/2.0/.
+ -->
+
+<?xml-stylesheet href="chrome://global/skin/" type="text/css"?>
+<?xml-stylesheet href="chrome://messenger/skin/preferences/preferences.css" type="text/css"?>
+
+<!DOCTYPE window SYSTEM "chrome://hubiC/locale/preferences.dtd" >
+
+<prefwindow id="hubicPreferences" type="child"
+            xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+            dlgbuttons="accept,cancel" title="&hubiCPrefs.windowTitle;">
+  <prefpane id="hubiCPreferencesPane"> 
+    <preferences id="hubiCPreferences">
+      <preference id="extensions.hubic.publicationDelay" name="extensions.hubic.publicationDelay" type="int" />
+      <preference id="extensions.hubic.filesPutPath" name="extensions.hubic.filesPutPath" type="string" />
+    </preferences>
+
+    <grid flex="1" id="">
+      <columns>
+        <column/>
+        <column flex="1"/>
+      </columns>
+      <rows>
+        <row align="center">
+          <hbox pack="end"><label control="hubic-publicationDelay" value="&hubiCPrefs.publicationDelay; :" /></hbox>
+          <hbox align="center">
+            <textbox id="hubic-publicationDelay" preference="extensions.hubic.publicationDelay" type="number" maxlength="3" size="3" />
+            <label control="hubic-publicationDelay" value=" &hubiCPrefs.days;" />
+          </hbox>
+        </row>
+        <row align="center">
+          <hbox pack="end"><label control="hubic-filesPutPath" value="&hubiCPrefs.filesPutPath; :" /></hbox>
+          <textbox id="hubic-filesPutPath" preference="extensions.hubic.filesPutPath" size="25" />
+        </row>
+      </rows>
+    </grid>
+  </prefpane>
+</prefwindow>

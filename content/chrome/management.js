@@ -2,7 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+
+let _hubicProvider = null;
+
 function onLoadProvider(provider) {
+  _hubicProvider = provider;
   let messenger = Components.classes["@mozilla.org/messenger;1"]
                             .createInstance(Components.interfaces.nsIMessenger);
 
@@ -41,4 +45,10 @@ function onLoadProvider(provider) {
     .text(messenger.formatFileSize(totalSpace));
 
   vis.render();
+}
+
+function displayPreferencesWindow() {
+  window.openDialog("chrome://hubiC/content/preferences.xul",
+                     null, "chrome,centerscreen",
+                     _hubicProvider);
 }
