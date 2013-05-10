@@ -40,7 +40,8 @@ function wwwFormUrlEncode(aStr) {
 
 
 function nsHubiC() {
-  this.log = Log4Moz.getConfiguredLogger("hubic", Log4Moz.Level.Info, Log4Moz.Level.Debug, Log4Moz.Level.Debug);
+  // this.log = Log4Moz.getConfiguredLogger("hubic", Log4Moz.Level.Info, Log4Moz.Level.Debug, Log4Moz.Level.Debug);
+  this.log = Log4Moz.getConfiguredLogger("hubic");
 }
 
 nsHubiC.prototype = {
