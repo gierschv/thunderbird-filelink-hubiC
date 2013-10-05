@@ -316,7 +316,7 @@ nsHubiC.prototype = {
             this._totalStorage = answer.quota;
             this._fileSpaceUsed = answer.used;
             this._cachedStorageToken = answer.credentials.secret;
-            this._cachedStorageUrl = atob(answer.credentials.username);
+            this._cachedStorageUrl = atob(answer.credentials.username.replace(/\s/g, ''));
             successCallback();
           }.bind(this), failureCallback);
       }.bind(this), failureCallback);
@@ -519,7 +519,7 @@ nsHubiC.prototype = {
       this._totalStorage = answer.quota;
       this._fileSpaceUsed = answer.used;
       this._cachedStorageToken = answer.credentials.secret;
-      this._cachedStorageUrl = atob(answer.credentials.username);
+      this._cachedStorageUrl = atob(answer.credentials.username.replace(/\s/g, ''));
       successCallback();
     };
 
