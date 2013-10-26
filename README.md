@@ -18,3 +18,7 @@ feature](https://support.mozillamessaging.com/kb/filelink-large-attachments).
 ## How to build this add-on
 
 Run build.sh, (or sh build.sh). The .xpi will be created in the root directory.
+
+
+[![Bitdeli Badge](https://d2weczhvl823v0.cloudfront.net/gierschv/thunderbird-filelink-hubic/trend.png)](https://bitdeli.com/free "Bitdeli Badge")
+
