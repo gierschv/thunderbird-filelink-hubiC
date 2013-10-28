@@ -255,15 +255,34 @@ nsHubiC.prototype = {
       ];
 
       this.log.info('API Request: ', url, JSON.stringify(headers), JSON.stringify(params));
-      doXHRequest(url, headers, params, successCallback, failureCallback, this, method);
+      doXHRequest(
+        url, headers, params,
+        successCallback,
+        function (err, aResponseText) {
+          let aResponse = JSON.parse(aResponseText);
+          if (aResponse.error === 'invalid_token') {
+            this._cachedAccessToken = null;
+            this._cachedAccessTokenExpiration = 0;
+            this._cachedRefreshToken = null;
+            this._apiRequest(url, params, successCallback, failureCallback, method);
+          }
+        }.bind(this),
+        this, method
+      );
     }.bind(this);
 
     var refreshCb = function () {
+      this._loggedIn = true;
       this._cachedAccessToken = this._connection.accessToken;
       this._cachedAccessTokenExpiration = this._connection.tokenExpires;
       this._cachedRefreshToken = this._connection.refreshToken;
       doApiRequest();
     }.bind(this);
+
+    // No tokens
+    if (!this._cachedRefreshToken || this._cachedRefreshToken.length === 0) {
+      return this._connection.connect(refreshCb, failureCallback, true);
+    }
 
     // Refresh
     if (this._cachedAccessTokenExpiration < new Date().getTime()) {
@@ -591,10 +610,6 @@ nsHubiC.prototype = {
       this.accountKey,
       kAuthRefreshToken
     );
-
-    if (!refreshToken) {
-      return "";
-    }
 
     return refreshToken;
   },
