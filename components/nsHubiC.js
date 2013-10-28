@@ -622,10 +622,6 @@ nsHubiC.prototype = {
     );
   },
 
-  // TODO
-//   const kAuthSwiftEndpoint = "hubiC Swift Endpoint";
-// const kAuthSwiftToken = "hubiC Swift token";
-// const kAuthSwiftExpiration = "hubic Swift token expiration";
   get _cachedSwiftEndpoint() {
     let endpoint = cloudFileAccounts.getSecretValue(
       this.accountKey,
