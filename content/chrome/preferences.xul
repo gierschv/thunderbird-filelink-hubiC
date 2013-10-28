@@ -26,8 +26,18 @@
       <rows>
         <row align="center">
           <hbox pack="end"><label control="hubic-publicationDelay" value="&hubiCPrefs.publicationDelay; :" /></hbox>
-          <hbox align="center">
-            <textbox id="hubic-publicationDelay" preference="extensions.hubic.publicationDelay" type="number" maxlength="3" size="3" />
+          <hbox align="center" id="hubic-publicationDelay">
+            <menulist id="hubic-publicationDelay" preference="extensions.hubic.publicationDelay">
+              <menupopup>
+                <menuitem label="1" value="1" />
+                <menuitem label="5" value="5" />
+                <menuitem label="10" value="10" />
+                <menuitem label="15" value="15" />
+                <menuitem label="20" value="20" />
+                <menuitem label="25" value="25" />
+                <menuitem label="30" value="30" />
+              </menupopup>
+            </menulist>
             <label control="hubic-publicationDelay" value=" &hubiCPrefs.days;" />
           </hbox>
         </row>

@@ -8,6 +8,8 @@
  * nsIMsgCloudFileProvider interface.
  */
 
+ /*jshint moz:true */
+
 const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
 
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
@@ -15,27 +17,36 @@ Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource:///modules/http.jsm");
 Cu.import("resource:///modules/gloda/log4moz.js");
 Cu.import("resource:///modules/cloudFileAccounts.js");
+Cu.import("resource://hubiC/OAuth2.jsm");
 
-const kHubicStorageUrl = "hubiC storage URL";
-const kHubicStorageToken = "hubiC storage token";
-const kHubicNicHandle = "Nic Handler OVH";
-const kHubicId = "hubic service identifier";
+const kAuthRefreshToken = "hubiC refresh token";
+const kAuthAccessTokenExpiration = "hubiC access token expiration";
+const kAuthSwiftEndpoint = "hubiC Swift Endpoint";
+const kAuthSwiftToken = "hubiC Swift token";
+const kAuthSwiftExpiration = "hubic Swift token expiration";
 
 const kMaxFileSize = 1073741824; // hubiC, max 10G
-const kContainerPath = "/default"
+const kContainerPath = "/default";
 var kFilesPutPath = "/thunderbird-attachements";
 var kPublicationDelay = 30;
 
-const gWsUrl = "https://ws.ovh.com/";
-const gWsLogin = "sessionHandler/r4/ws.dispatcher";
-const gWsHubic = "hubic/r5/ws.dispatcher";
+const kAppKey = "api_hubic_GBHc2IB1k44ujyqg32bYmfBOVo2CKrpN";
+const kAppSecret = "UZtRzeDfFpyPVlY7Q0Mvnkbca0iBdDSuMARE6QdYOS2JhJKVohbx6i4pDMpRkOtY";
+const kScope = "usage.r,account.r,credentials.r,links.wd";
+
+const gServerUrl = "https://api.hubic.com/";
+const gAuthUrl = "https://api.hubic.com/oauth/auth/";
+const gUsagePath = "1.0/account/usage";
+const gSwiftTokenPath = "1.0/account/credentials";
+const gSharedLink = "1.0/account/links";
 
 function wwwFormUrlEncode(aStr) {
-  return encodeURIComponent(aStr).replace(/!/g, '%21')
-                                 .replace(/'/g, '%27')
-                                 .replace(/\(/g, '%28')
-                                 .replace(/\)/g, '%29')
-                                 .replace(/\*/g, '%2A');
+  return encodeURIComponent(aStr)
+    .replace(/!/g, '%21')
+    .replace(/'/g, '%27')
+    .replace(/\(/g, '%28')
+    .replace(/\)/g, '%29')
+    .replace(/\*/g, '%2A');
 }
 
 
@@ -45,6 +56,7 @@ function nsHubiC() {
 }
 
 nsHubiC.prototype = {
+
   /* nsISupports */
   QueryInterface: XPCOMUtils.generateQI([Ci.nsIMsgCloudFileProvider]),
 
@@ -52,7 +64,7 @@ nsHubiC.prototype = {
 
   get type() "hubiC",
   get displayName() "hubiC by OVH",
-  get serviceURL() "https://www.ovh.fr/hubiC",
+  get serviceURL() "https://hubic.com",
   get iconClass() "chrome://hubiC/content/hubic-32.png",
   get accountKey() this._accountKey,
   get lastError() this._lastErrorText,
@@ -87,8 +99,7 @@ nsHubiC.prototype = {
     this._accountKey = aAccountKey;
     this._prefBranch = Services.prefs.getBranch("mail.cloud_files.accounts." +
                                                 aAccountKey + ".");
-    this._userName = this._prefBranch.getCharPref("username");
-    this._loggedIn = this._cachedAuthToken != "";
+    this._loggedIn = this._cachedAccessToken !== "";
 
     // hubiC preferences
     this._prefBranch = Services.prefs.getBranch("extensions.hubic.");
@@ -103,56 +114,16 @@ nsHubiC.prototype = {
 
     kPublicationDelay = this._prefBranch.getIntPref("publicationDelay");
     kFilesPutPath = this._prefBranch.getCharPref("filesPutPath");
-  },
 
-  /**
-   * Returns the saved password for this account if one exists, or prompts
-   * the user for a password. Returns the empty string on failure.
-   *
-   * @param aUsername the username associated with the account / password.
-   * @param aNoPrompt a boolean for whether or not we should suppress
-   *                  the password prompt if no password exists.  If so,
-   *                  returns the empty string if no password exists.
-   */
-  getPassword: function nsHubiC_getPassword(aUsername, aNoPrompt) {
-    this.log.info("Getting password for user: " + aUsername);
+    // OAuth2
+    this._connection = new OAuth2(
+      gServerUrl,
+      kScope, kAppKey, kAppSecret
+    );
 
-    if (aNoPrompt)
-      this.log.info("Suppressing password prompt");
-
-    let passwordURI = gWsUrl;
-    let logins = Services.logins.findLogins({}, passwordURI, null, passwordURI);
-    for each (let loginInfo in logins) {
-      if (loginInfo.username == aUsername)
-        return loginInfo.password;
-    }
-    if (aNoPrompt)
-      return "";
-
-    // OK, let's prompt for it.
-    let win = Services.wm.getMostRecentWindow(null);
-
-    let authPrompter = Services.ww.getNewAuthPrompter(win);
-    let password = { value: "" };
-
-    // Use the service name in the prompt text
-    let serverUrl = gWsUrl;
-    let userPos = gWsUrl.indexOf("//") + 2;
-    let userNamePart = encodeURIComponent(this._userName) + '@';
-    serverUrl = gWsUrl.substr(0, userPos) + userNamePart + gWsUrl.substr(userPos);
-    let messengerBundle = Services.strings.createBundle(
-      "chrome://messenger/locale/messenger.properties");
-    let promptString = messengerBundle.formatStringFromName("passwordPrompt",
-                                                            [this._userName,
-                                                             this.displayName],
-                                                            2);
-
-    if (authPrompter.promptPassword(this.displayName, promptString, serverUrl,
-                                    authPrompter.SAVE_PASSWORD_PERMANENTLY,
-                                    password))
-      return password.value;
-
-    return "";
+    this._connection.authURI = gServerUrl + 'oauth/auth';
+    this._connection.tokenURI = gServerUrl + 'oauth/token/';
+    this._connection.completionURI = 'https://addons.mozilla.org/';
   },
 
   /**
@@ -164,7 +135,7 @@ nsHubiC.prototype = {
    *                         nsHubiCFileUploader
    * @param aStatus the result of the upload
    */
-  _uploaderCallback : function nsHubiC__uploaderCallback(aRequestObserver, aStatus) {
+  _uploaderCallback: function nsHubiC__uploaderCallback(aRequestObserver, aStatus) {
     aRequestObserver.onStopRequest(null, null, aStatus);
     this._uploadingFile = null;
     this._uploads.shift();
@@ -180,8 +151,9 @@ nsHubiC.prototype = {
         nextUpload.callback(nextUpload.requestObserver, Cr.NS_ERROR_FAILURE);
       }
     }
-    else
+    else {
       this._uploader = null;
+    }
   },
 
   /** 
@@ -197,28 +169,31 @@ nsHubiC.prototype = {
 
     this.log.info("uploading " + aFile.leafName);
 
-    // Some ugliness here - we stash requestObserver here, because we might
-    // use it again in _getUserInfo.
-    this.requestObserver = aCallback;
+    var processUploadFile = function () {
+      // Some ugliness here - we stash requestObserver here, because we might
+      // use it again in _getUserInfo.
+      this.requestObserver = aCallback;
 
-    // if we're uploading a file, queue this request.
-    if (this._uploadingFile && this._uploadingFile != aFile) {
-      let uploader = new nsHubiCFileUploader(this, aFile,
-                                             this._uploaderCallback.bind(this),
-                                             aCallback);
-      this._uploads.push(uploader);
-      return;
-    }
-    this._file = aFile;
-    this._uploadingFile = aFile;
+      // if we're uploading a file, queue this request.
+      if (this._uploadingFile && this._uploadingFile != aFile) {
+        let uploader = new nsHubiCFileUploader(this, aFile,
+                                               this._uploaderCallback.bind(this),
+                                               aCallback);
+        this._uploads.push(uploader);
+        return;
+      }
+      this._file = aFile;
+      this._uploadingFile = aFile;
 
-    let successCallback = this._finishUpload.bind(this, aFile, aCallback);
-    if (!this._loggedIn)
-      return this._logonAndGetUserInfo(successCallback, null, true);
-    this.log.info("getting user info");
-    if (!this._userInfo)
-      return this._getUserInfo(successCallback);
-    successCallback();
+      let successCallback = this._finishUpload.bind(this, aFile, aCallback);
+      if (!this._loggedIn)
+        return this._logonAndGetUserInfo(successCallback, null, true);
+      if (!this._userInfo)
+        return this._getUserInfo(successCallback);
+      successCallback();
+    }.bind(this);
+
+    this._getSwiftToken(processUploadFile, aCallback);
   },
 
   /**
@@ -272,6 +247,34 @@ nsHubiC.prototype = {
     }
   },
 
+  _apiRequest: function nsHubiC_apiRequest(url, params, successCallback, failureCallback, method) {
+    var doApiRequest = function () {
+      let headers = [
+        ["Authorization", "Bearer " + this._cachedAccessToken],
+        ["Accept", "application/json"]
+      ];
+
+      this.log.info('API Request: ', url, JSON.stringify(headers), JSON.stringify(params));
+      doXHRequest(url, headers, params, successCallback, failureCallback, this, method);
+    }.bind(this);
+
+    var refreshCb = function () {
+      this._cachedAccessToken = this._connection.accessToken;
+      this._cachedAccessTokenExpiration = this._connection.tokenExpires;
+      this._cachedRefreshToken = this._connection.refreshToken;
+      doApiRequest();
+    }.bind(this);
+
+    // Refresh
+    if (this._cachedAccessTokenExpiration < new Date().getTime()) {
+      this._connection.refreshToken = this._cachedRefreshToken;
+      this._connection.connect(refreshCb, failureCallback, false, true);
+    }
+    else {
+      doApiRequest();
+    }
+  },
+
   /**
    * A private function used to retrieve the profile information for the
    * user account associated with the accountKey.
@@ -280,46 +283,82 @@ nsHubiC.prototype = {
    *                        is successful
    * @param failureCallback the function called if information retrieval fails
    */
-  _getUserInfo: function nsHubiC_getUserInfo(successCallback, failureCallback) {
-    if (!successCallback) {
+   _getUserInfo: function nsHubic_getUserInfo(successCallback, failureCallback) {
+    if (!successCallback)
       successCallback = function() {
         this.requestObserver
             .onStopRequest(null, null,
                            this._loggedIn ? Cr.NS_OK : Ci.nsIMsgCloudFileProvider.authErr);
       }.bind(this);
-    }
 
-    if (!failureCallback) {
+    if (!failureCallback)
       failureCallback = function () {
         this.requestObserver
             .onStopRequest(null, null, Ci.nsIMsgCloudFileProvider.authErr);
       }.bind(this);
+
+    this._apiRequest(
+      gServerUrl + gUsagePath, null,
+      function (aResponseText) {
+        this._userInfo = JSON.parse(aResponseText);
+        this._totalStorage = this._userInfo.quota;
+        this._fileSpaceUsed = this._userInfo.used;
+        successCallback();
+      }.bind(this),
+      failureCallback
+    );
+  },
+
+  _getSwiftToken: function nsHubiC_getSwiftToken(successCallback, failureCallback) {
+    if (this._cachedSwiftExpiration < new Date().getTime()) {
+      this._apiRequest(
+        gServerUrl + gSwiftTokenPath, null,
+        function (aResponseText) {
+          this.log.info(aResponseText);
+          let swift = JSON.parse(aResponseText);
+          this._cachedSwiftExpiration = new Date(swift.expires);
+          this._cachedSwiftToken = swift.token;
+          this._cachedSwiftEndpoint = swift.endpoint;
+          successCallback();
+        }.bind(this),
+        failureCallback
+      );
     }
-
-    // Password
-    if (this._password == undefined || !this._password) {
-      this._password = this.getPassword(this._userName, false);
-
-      if (this._password == "") {
-        this.log.info("No password");
-        return failureCallback();
-      }
+    else {
+      successCallback();
     }
+  },
 
-    // WS
-    this._wsLogin(this._cachedNic, this._password,
-      function(answer) {
-        this.log.debug("login: " + JSON.stringify(answer));
-        this._wsGetHubic(answer.session.id, this._cachedHubicId,
-          function(answer) {
-            this.log.debug("getHubic: " + JSON.stringify(answer));
-            this._totalStorage = answer.quota;
-            this._fileSpaceUsed = answer.used;
-            this._cachedStorageToken = answer.credentials.secret;
-            this._cachedStorageUrl = atob(answer.credentials.username);
-            successCallback();
-          }.bind(this), failureCallback);
-      }.bind(this), failureCallback);
+  _createLink: function nsHubiC_createLink(uri, successCallback, failureCallback) {
+    this._apiRequest(
+      gServerUrl + gSharedLink,
+      [
+        ['comment', 'Thunderbird Filelink - ' + new Date()],
+        ['container', 'default'],
+        ['mode', 'ro'],
+        ['type', 'file'],
+        ['uri', uri],
+        ['ttl', kPublicationDelay],
+      ],
+      function (aResponseText) {
+        this.log.info(aResponseText);
+        successCallback(JSON.parse(aResponseText));
+      }.bind(this),
+      failureCallback
+    );
+  },
+
+  _deleteLink: function nsHubiC_deleteLink(uri, successCallback, failureCallback) {
+    this._apiRequest(
+      gServerUrl + gSharedLink,
+      [['uri', uri]],
+      function (aResponseText) {
+        this.log.info(aResponseText);
+        successCallback(JSON.parse(aResponseText));
+      }.bind(this),
+      failureCallback,
+      'DELETE'
+    );
   },
 
   /**
@@ -333,8 +372,8 @@ nsHubiC.prototype = {
    *                UI if we don't have a valid token anymore, or just fail out.
    */
   _logonAndGetUserInfo: function nsHubiC_logonAndGetUserInfo(aSuccessCallback,
-                                                               aFailureCallback,
-                                                               aWithUI) {
+                                                             aFailureCallback,
+                                                             aWithUI) {
     if (!aFailureCallback)
       aFailureCallback = function () {
         this.requestObserver
@@ -382,8 +421,8 @@ nsHubiC.prototype = {
    * function defined in nsIMsgCloudFileProvider.idl.
    */
   createNewAccount: function nsHubiC_createNewAccount(aEmailAddress,
-                                                        aPassword, aFirstName,
-                                                        aLastName) {
+                                                      aPassword, aFirstName,
+                                                      aLastName) {
     return Cr.NS_ERROR_NOT_IMPLEMENTED;
   },
 
@@ -395,7 +434,6 @@ nsHubiC.prototype = {
    * might be excisable.
    */
   createExistingAccount: function nsHubiC_createExistingAccount(aRequestObserver) {
-     // XXX: replace this with a better function
     let successCb = function(aResponseText, aRequest) {
       aRequestObserver.onStopRequest(null, this, Cr.NS_OK);
     }.bind(this);
@@ -449,14 +487,19 @@ nsHubiC.prototype = {
 
     this.requestObserver = aCallback;
 
-    let url = this._cachedStorageUrl + kContainerPath + fileHubic;
-    let headers = [["X-Auth-Token", this._cachedStorageToken]];
+    let url = this._cachedSwiftEndpoint + kContainerPath + fileHubic;
+    let headers = [["X-Auth-Token", this._cachedSwiftToken]];
 
     this.request = doXHRequest(url, headers, null,
       function(aResponseText, aRequest) {
         this.request = null;
         this.log.info("success deleting file " + aResponseText);
-        aCallback.onStopRequest(null, null, Cr.NS_OK);
+
+        var deleteLink = function () {
+          aCallback.onStopRequest(null, null, Cr.NS_OK);
+        };
+
+        this._deleteLink(fileHubic, deleteLink, deleteLink);
       }.bind(this),
       function(aException, aResponseText, aRequest) {
         this.request = null;
@@ -476,192 +519,152 @@ nsHubiC.prototype = {
    *                where we don't want to pop up the oauth ui.
    */
   logon: function nsHubiC_logon(successCallback, failureCallback, aWithUI) {
-    // Get Password from UI
-    this.log.info("Logging in, aWithUI = " + aWithUI);
-    if (this._password == undefined || !this._password) {
-      this._password = this.getPassword(this._userName, !aWithUI);
+    let accessToken = this._cachedAccessToken;
+    let refreshToken = this._cachedRefreshToken;
 
-      if (this._password == "") {
-        this.log.info("No password");
-        return failureCallback();
-      }
+    if (!aWithUI && (!accessToken.length || !refreshToken.length)) {
+      failureCallback();
+      return;
     }
 
-    // WS
-    let _wsAnonymousSessionSuccess, _wsGetHubicsSuccess, _wsLoginSuccess, _wsGetHubicSuccess;
-
-    _wsAnonymousSessionSuccess = function(answer) {
-      this.log.info("Anonymous session: " + JSON.stringify(answer));
-      this._wsGetHubics(answer.session.id, _wsGetHubicsSuccess.bind(this), failureCallback);
-    };
-
-    _wsGetHubicsSuccess = function(answer) {
-      this.log.info("getHubics: " + JSON.stringify(answer));
-      if (answer.length === 0) {
-        this.log.error("getHubics: No hubiC for email " + this._userName);
-        failureCallback();
-      }
-      else {
-        this._cachedNic = answer[0].nic;
-        this._cachedHubicId = answer[0].id;
-        this.log.info("getHubics: " + this._cachedNic + " / " + this._cachedHubicId);
-        this._wsLogin(this._cachedNic, this._password, _wsLoginSuccess.bind(this), failureCallback);
-      }
-    };
-
-    _wsLoginSuccess = function(answer) {
-      this.log.info("login: " + JSON.stringify(answer));
-      this._wsGetHubic(answer.session.id, this._cachedHubicId,
-                       _wsGetHubicSuccess.bind(this), failureCallback);
-    };
-
-    _wsGetHubicSuccess = function(answer) {
-      this._totalStorage = answer.quota;
-      this._fileSpaceUsed = answer.used;
-      this._cachedStorageToken = answer.credentials.secret;
-      this._cachedStorageUrl = atob(answer.credentials.username);
-      successCallback();
-    };
-
-    this._wsAnonymousSession(_wsAnonymousSessionSuccess.bind(this), failureCallback);
-  },
-
-  _wsRequest: function nsHubic_wsRequest(url, params, successCallback, failureCallback) {
-    this.log.info("Sending WS request to: " + url);
-    let callUrl = url + "?params=" + wwwFormUrlEncode(JSON.stringify(params));
-    let request = doXHRequest(callUrl, null, null,
-      function(aResponseText) {
-        let response = JSON.parse(aResponseText);
-        if (response.error) {
-          this.log.error("WS Error:" + response.error.message);
-          if (failureCallback !== undefined) {
-            return failureCallback(response.error.message);
-          }
-        }
-        else {
-          this.log.info("WS success on request to: " + url);
-          if (successCallback !== undefined) {
-            return successCallback(response.answer);
-          }
-        }
+    this._connection.connect(
+      function () {
+        this.log.info("success connecting");
+        this._loggedIn = true;
+        this._cachedAccessToken = this._connection.accessToken;
+        this._cachedAccessTokenExpiration = this._connection.tokenExpires;
+        this._cachedRefreshToken = this._connection.refreshToken;
+        successCallback();
       }.bind(this),
-      failureCallback, this, "GET"
+      function () {
+        this.log.error("failed connecting");
+        failureCallback();
+      }.bind(this),
+      true
     );
   },
 
-  /**
-   * ws : sessionHandler/getAnonymousSession
-   */
-  _wsAnonymousSession: function nsHubic_wsSessionHandlerAnonymousSession(successCallback, failureCallback) {
-    return this._wsRequest(gWsUrl + gWsLogin + "/getAnonymousSession", {},
-                           successCallback, failureCallback);
+  get _cachedAccessToken() {
+    let accessToken = cloudFileAccounts.getSecretValue(
+      this.accountKey, 
+      cloudFileAccounts.kTokenRealm
+    );
+
+    if (!accessToken) {
+      return "";
+    }
+
+    return accessToken;
   },
 
-  /**
-   * ws : sessionHandler/login
-   */
-  _wsLogin: function nsHubic_wsSessionHandlerLogin(login, password, successCallback, failureCallback) {
-    return this._wsRequest(gWsUrl + gWsLogin + "/login",
-                           { login: login, password: password, context: "hubic" },
-                           successCallback, failureCallback);
+  set _cachedAccessToken(aAccessToken) {
+    cloudFileAccounts.setSecretValue(
+      this.accountKey,
+      cloudFileAccounts.kTokenRealm,
+      aAccessToken
+    );
   },
 
-  /**
-   * ws : hubic/getHubics
-   */
-  _wsGetHubics: function nsHubic_wsHubicGetHubics(sessionId, successCallback, failureCallback) {
-    return this._wsRequest(gWsUrl + gWsHubic + "/getHubics",
-                           { sessionId: sessionId, email: this._userName },
-                           successCallback, failureCallback);
+  get _cachedAccessTokenExpiration() {
+    let aAccessTokenExpiration = cloudFileAccounts.getSecretValue(
+      this.accountKey,
+      kAuthAccessTokenExpiration
+    );
+
+    if (!aAccessTokenExpiration) {
+      return 0;
+    }
+
+    return aAccessTokenExpiration;
   },
 
-  /**
-   * ws : hubic/getHubic
-   */
-  _wsGetHubic: function nsHubic_wsHubicGetHubic(sessionId, hubicId, successCallback, failureCallback) {
-    return this._wsRequest(gWsUrl + gWsHubic + "/getHubic",
-                           { sessionId: sessionId, hubicId: hubicId },
-                           successCallback, failureCallback);
+  set _cachedAccessTokenExpiration(aAccessTokenExpiration) {
+    cloudFileAccounts.setSecretValue(
+      this.accountKey,
+      kAuthAccessTokenExpiration,
+      aAccessTokenExpiration
+    );
   },
 
-  /**
-   * ws : hubic/newPublication
-   */
-  _wsNewPublication: function nsHubic_wsHubicNewPublication(sessionId, hubicId, fileResource, successCallback, failureCallback) {
-    return this._wsRequest(gWsUrl + gWsHubic + "/newPublication",
-                           { sessionId: sessionId, hubicId: hubicId, fileResource: fileResource,
-                             publicationParameters: { fileResourceType: "file", delay: kPublicationDelay }, containerName: "default" },
-                           successCallback, failureCallback);
+  get _cachedRefreshToken() {
+    let refreshToken = cloudFileAccounts.getSecretValue(
+      this.accountKey,
+      kAuthRefreshToken
+    );
+
+    if (!refreshToken) {
+      return "";
+    }
+
+    return refreshToken;
   },
 
-
-  /**
-   * Retrieves the cached storage URL for this account.
-   */
-  get _cachedStorageUrl() {
-    let url = cloudFileAccounts.getSecretValue(this.accountKey, cloudFileAccounts.kTokenRealm);
-    return url || "";
+  set _cachedRefreshToken(aRefreshToken) {
+    cloudFileAccounts.setSecretValue(
+      this.accountKey,
+      kAuthRefreshToken,
+      aRefreshToken
+    );
   },
 
-  /**
-   * Sets the cached storage URL for this account.
-   *
-   * @param aAuthToken the auth token to cache.
-   */
-  set _cachedStorageUrl(url) {
-    cloudFileAccounts.setSecretValue(this.accountKey, cloudFileAccounts.kTokenRealm, url);
+  // TODO
+//   const kAuthSwiftEndpoint = "hubiC Swift Endpoint";
+// const kAuthSwiftToken = "hubiC Swift token";
+// const kAuthSwiftExpiration = "hubic Swift token expiration";
+  get _cachedSwiftEndpoint() {
+    let endpoint = cloudFileAccounts.getSecretValue(
+      this.accountKey,
+      kAuthSwiftEndpoint
+    );
+
+    return endpoint;
   },
 
-  /**
-   * Retrieves the cached storage token for this account.
-   */
-  get _cachedStorageToken() {
-    let token = cloudFileAccounts.getSecretValue(this.accountKey, kHubicStorageToken);
-    return token || "";
+  set _cachedSwiftEndpoint(endpoint) {
+    cloudFileAccounts.setSecretValue(
+      this.accountKey,
+      kAuthSwiftEndpoint,
+      endpoint
+    );
   },
 
-  /**
-   * Sets the cached storage token for this account.
-   *
-   * @param aAuthSecret the auth secret to cache.
-   */
-  set _cachedStorageToken(token) {
-    cloudFileAccounts.setSecretValue(this.accountKey, kHubicStorageToken, token);
+  get _cachedSwiftToken() {
+    let token = cloudFileAccounts.getSecretValue(
+      this.accountKey,
+      kAuthSwiftToken
+    );
+
+    return token;
   },
 
-  /**
-   * Retrieves the cached storage token for this account.
-   */
-  get _cachedNic() {
-    let nic = cloudFileAccounts.getSecretValue(this.accountKey, kHubicNicHandle);
-    return nic || "";
+  set _cachedSwiftToken(token) {
+    cloudFileAccounts.setSecretValue(
+      this.accountKey,
+      kAuthSwiftToken,
+      token
+    );
   },
 
-  /**
-   * Sets the cached storage token for this account.
-   *
-   * @param aAuthSecret the auth secret to cache.
-   */
-  set _cachedNic(nic) {
-    cloudFileAccounts.setSecretValue(this.accountKey, kHubicNicHandle, nic);
+  get _cachedSwiftExpiration() {
+    let expiration = cloudFileAccounts.getSecretValue(
+      this.accountKey,
+      kAuthSwiftExpiration
+    );
+
+    if (!expiration) {
+      return 0;
+    }
+
+    return expiration;
   },
 
-  /**
-   * Retrieves the cached storage token for this account.
-   */
-  get _cachedHubicId() {
-    let id = cloudFileAccounts.getSecretValue(this.accountKey, kHubicId);
-    return id || "";
+  set _cachedSwiftExpiration(expiration) {
+    cloudFileAccounts.setSecretValue(
+      this.accountKey,
+      kAuthSwiftExpiration,
+      expiration
+    );
   },
-
-  /**
-   * Sets the cached storage token for this account.
-   *
-   * @param aAuthSecret the auth secret to cache.
-   */
-  set _cachedHubicId(id) {
-    cloudFileAccounts.setSecretValue(this.accountKey, kHubicId, id);
-  }
 };
 
 function nsHubiCFileUploader(aHubic, aFile, aCallback, aRequestObserver) {
@@ -690,7 +693,7 @@ nsHubiCFileUploader.prototype = {
 
       this.log.info("ready to upload file " + wwwFormUrlEncode(this.file.leafName));
       let fileHubic = kFilesPutPath + '/' + wwwFormUrlEncode(new Date().getTime() + '-' + this.file.leafName);
-      let url = this.hubic._cachedStorageUrl + kContainerPath + fileHubic;
+      let url = this.hubic._cachedSwiftEndpoint + kContainerPath + fileHubic;
       
       let fileContents = "";
       let fstream = Cc["@mozilla.org/network/file-input-stream;1"]
@@ -711,7 +714,7 @@ nsHubiCFileUploader.prototype = {
 
       let headers = [["Content-Length", fstream.available()],
                      ["Content-Type", mimeType],
-                     ["X-Auth-Token", this.hubic._cachedStorageToken]];
+                     ["X-Auth-Token", this.hubic._cachedSwiftToken]];
 
       this.request = doXHRequest(url, headers, bufStream,
         function(aResponseText, aRequest) {
@@ -739,6 +742,7 @@ nsHubiCFileUploader.prototype = {
    * It don't use doXHRequest to be able to overrideMimeType without charset
    */
   createDirectory: function nsDFU_createDirectory(dir, callback) {
+    this.log.info('createDirectory', dir);
     var aDir = dir.split('/'), remaining = 0, result = true;
 
     var createDirectoryProcess = function(dir, exists) {
@@ -746,10 +750,10 @@ nsHubiCFileUploader.prototype = {
         let xhr = Cc["@mozilla.org/xmlextras/xmlhttprequest;1"]
                     .createInstance(Ci.nsIXMLHttpRequest);
         xhr.mozBackgroundRequest = true;
-        xhr.open("PUT", this.hubic._cachedStorageUrl + kContainerPath + dir);
+        xhr.open("PUT", this.hubic._cachedSwiftEndpoint + kContainerPath + dir);
         xhr.setRequestHeader("Content-Length", 0);
-        this.log.info("X-Auth-Token: " + this.hubic._cachedStorageToken);
-        xhr.setRequestHeader("X-Auth-Token", this.hubic._cachedStorageToken);
+        this.log.info("X-Auth-Token: " + this.hubic._cachedSwiftToken);
+        xhr.setRequestHeader("X-Auth-Token", this.hubic._cachedSwiftToken);
         xhr.setRequestHeader("Content-Type", "application/directory");
         xhr.overrideMimeType("application/directory");
 
@@ -779,14 +783,14 @@ nsHubiCFileUploader.prototype = {
       }
     };
 
-    for (var i = 0; i < aDir.length ; i++) {
+    for (let i = 0; i < aDir.length ; i++) {
       if (aDir[i].length !== 0) {
         remaining++;
       }
     }
 
     dir = '';
-    for (var i = 0; i < aDir.length ; i++) {
+    for (let i = 0; i < aDir.length ; i++) {
       if (aDir[i].length === 0) {
         continue;
       }
@@ -803,8 +807,8 @@ nsHubiCFileUploader.prototype = {
    * Check if upload directory exists
    */
   directoryExists: function nsDFU_directoryExists(dir, callback) {
-    let headers = [["X-Auth-Token", this.hubic._cachedStorageToken]];
-    let url = this.hubic._cachedStorageUrl + kContainerPath + dir;
+    let headers = [["X-Auth-Token", this.hubic._cachedSwiftToken]];
+    let url = this.hubic._cachedSwiftEndpoint + kContainerPath + dir;
     this.request = doXHRequest(url, headers, null,
       function(aResponseText, aRequest) {
         this.request = null;
@@ -847,32 +851,15 @@ nsHubiCFileUploader.prototype = {
   _getShareUrl: function nsDFU_getShareUrl(aFile, file, aCallback, aRequestObserver) {
     this.file = aFile;
 
-    // Password
-    if (this._password == undefined || !this._password) {
-      this._password = this.getPassword(this._userName, false);
-
-      if (this._password == "") {
-        this.log.info("No password");
-        return failureCallback();
+    this._createLink(
+      file,
+      function (answer) {
+        this._urlsForFiles[this.file.path] = answer.indirectUrl;
+        aCallback(aRequestObserver, Cr.NS_OK);
+      }.bind(this),
+      function() {
+        aCallback(aRequestObserver, Cr.NS_ERROR_FAILURE);
       }
-    }
-
-    // WS
-    let _wsFailure = function() {
-      aCallback(aRequestObserver, Cr.NS_ERROR_FAILURE);
-    }
-
-    this._wsLogin(this._cachedNic, this._password, 
-      function(answer) {
-        this.log.info("login: " + JSON.stringify(answer));
-        this._wsNewPublication(answer.session.id, this._cachedHubicId, file,
-          function(answer) {
-            this.log.info("newPublication: " + JSON.stringify(answer));
-            this._urlsForFiles[this.file.path] = answer.indirectUrl;
-            aCallback(aRequestObserver, Cr.NS_OK);
-          }.bind(this), _wsFailure.bind(this)
-        );
-      }.bind(this), _wsFailure.bind(this)
     );
   },
 };

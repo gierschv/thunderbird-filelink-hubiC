@@ -1,6 +1,7 @@
 content hubiC content/chrome/
 locale hubiC en-US locale/en-US/
 locale hubiC fr locale/fr/
+resource hubiC resources/
 component {92E625EE-545D-11E2-A143-E9D96188709B} components/nsHubiC.js
 contract @mozilla.org/mail/hubiC;1 {92E625EE-545D-11E2-A143-E9D96188709B}
 category cloud-files hubiC @mozilla.org/mail/hubiC;1
