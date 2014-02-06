@@ -35,7 +35,6 @@ const kAppSecret = "UZtRzeDfFpyPVlY7Q0Mvnkbca0iBdDSuMARE6QdYOS2JhJKVohbx6i4pDMpR
 const kScope = "usage.r,account.r,credentials.r,links.wd";
 
 const gServerUrl = "https://api.hubic.com/";
-const gAuthUrl = "https://api.hubic.com/oauth/auth/";
 const gUsagePath = "1.0/account/usage";
 const gSwiftTokenPath = "1.0/account/credentials";
 const gSharedLink = "1.0/account/links";
@@ -121,7 +120,7 @@ nsHubiC.prototype = {
       kScope, kAppKey, kAppSecret
     );
 
-    this._connection.authURI = gServerUrl + 'oauth/auth';
+    this._connection.authURI = gServerUrl + 'oauth/auth/';
     this._connection.tokenURI = gServerUrl + 'oauth/token/';
     this._connection.completionURI = 'https://addons.mozilla.org/';
   },
