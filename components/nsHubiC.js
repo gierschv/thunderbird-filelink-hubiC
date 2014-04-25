@@ -265,6 +265,9 @@ nsHubiC.prototype = {
             this._cachedRefreshToken = null;
             this._apiRequest(url, params, successCallback, failureCallback, method);
           }
+          else {
+            failureCallback(err, aResponseText);
+          }
         }.bind(this),
         this, method
       );
