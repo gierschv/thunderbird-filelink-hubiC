@@ -350,6 +350,12 @@ nsHubiC.prototype = {
     }
   },
 
+  _resetSwiftToken: function nsHubic_resetSwiftToken(successCallback, failureCallback) {
+    this._cachedSwiftExpiration = 0;
+    this._cachedSwiftToken = null;
+    this._getSwiftToken(successCallback, failureCallback);
+  },
+
   _createLink: function nsHubiC_createLink(uri, successCallback, failureCallback) {
     this._apiRequest(
       gServerUrl + gSharedLink,
@@ -833,8 +839,17 @@ nsHubiCFileUploader.prototype = {
         callback(dir, true);
       }.bind(this),
       function(aException, aResponseText, aRequest) {
+        // Ensure token is still valid (should be since we check expiration date)
+        if (aException.match(/401/)) {
+          this.log.error('X-Auth-Token looks invalid, fetching new one');
+          return this.hubic._resetSwiftToken(
+            this.directoryExists.bind(this, dir, callback),
+            this.callback.bind(this, this.requestObserver, Cr.NS_ERROR_NOT_AVAILABLE)
+          );
+        }
+
         this.request = null;
-        this.log.debug("Upload directory don't exists: " + dir);
+        this.log.debug("Upload directory doesn't exist: " + dir, aException);
         callback(dir, false);
       }.bind(this), this, "HEAD"
     );
@@ -875,7 +890,7 @@ nsHubiCFileUploader.prototype = {
         aCallback(aRequestObserver, Cr.NS_OK);
       }.bind(this),
       function() {
-        aCallback(aRequestObserver, Cr.NS_ERROR_FAILURE);
+        aCallback(aRequestObserver, Cr.NS_ERROR_NOT_AVAILABLE);
       }
     );
   },
