@@ -14,8 +14,8 @@ const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
 
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource:///modules/http.jsm");
-Cu.import("resource:///modules/gloda/log4moz.js");
+Cu.import("resource://gre/modules/Http.jsm");
+Cu.import("resource://app/modules/gloda/log4moz.js");
 Cu.import("resource:///modules/cloudFileAccounts.js");
 Cu.import("resource://hubiC/OAuth2.jsm");
 
@@ -155,10 +155,10 @@ nsHubiC.prototype = {
     }
   },
 
-  /** 
+  /**
    * Attempts to upload a file to hubiC.
    *
-   * @param aFile the nsILocalFile to be uploaded
+   * @param aFile the nsIFile to be uploaded
    * @param aCallback an nsIRequestObserver for listening for the starting
    *                  and ending states of the upload.
    */
@@ -200,7 +200,7 @@ nsHubiC.prototype = {
    * (we haven't exceeded file size or quota limitations), and then attempts
    * to kick-off the upload.
    *
-   * @param aFile the nsILocalFile to upload
+   * @param aFile the nsIFile to upload
    * @param aCallback an nsIRequestObserver for monitoring the starting and
    *                  ending states of the upload.
    */
@@ -229,7 +229,7 @@ nsHubiC.prototype = {
   /**
    * Attempts to cancel a file upload.
    *
-   * @param aFile the nsILocalFile to cancel the upload for.
+   * @param aFile the nsIFile to cancel the upload for.
    */
   cancelFileUpload: function nsHubiC_cancelFileUpload(aFile) {
     if (this._uploadingFile.equals(aFile)) {
@@ -248,16 +248,15 @@ nsHubiC.prototype = {
 
   _apiRequest: function nsHubiC_apiRequest(url, params, successCallback, failureCallback, method) {
     var doApiRequest = function () {
-      let headers = [
-        ["Authorization", "Bearer " + this._cachedAccessToken],
-        ["Accept", "application/json"]
-      ];
-
-      this.log.info('API Request: ', url, JSON.stringify(headers), JSON.stringify(params));
-      doXHRequest(
-        url, headers, params,
-        successCallback,
-        function (err, aResponseText) {
+      let options = {
+        method: method,
+        postData: params,
+        headers: [
+          ["Authorization", "Bearer " + this._cachedAccessToken],
+          ["Accept", "application/json"]
+        ],
+        onLoad: successCallback.bind(this),
+        onError: function (err, aResponseText) {
           let aResponse = JSON.parse(aResponseText);
           if (aResponse.error === 'invalid_token') {
             this._cachedAccessToken = null;
@@ -269,8 +268,11 @@ nsHubiC.prototype = {
             failureCallback(err, aResponseText);
           }
         }.bind(this),
-        this, method
-      );
+      };
+
+      this.log.info('API Request: ', url, JSON.stringify(options));
+
+      httpRequest(url, options);
     }.bind(this);
 
     var refreshCb = function () {
@@ -413,9 +415,9 @@ nsHubiC.prototype = {
   },
 
   /**
-   * For some nsILocalFile, return the associated sharing URL.
+   * For some nsIFile, return the associated sharing URL.
    *
-   * @param aFile the nsILocalFile to retrieve the URL for
+   * @param aFile the nsIFile to retrieve the URL for
    */
   urlForFile: function nsHubiC_urlForFile(aFile) {
     return this._urlsForFiles[aFile.path];
@@ -505,20 +507,21 @@ nsHubiC.prototype = {
    *                  ending states of the deletion request.
    */
   deleteFile: function nsHubiC_deleteFile(aFile, aCallback) {
-    if (Services.io.offline)
+    if (Services.io.offline) {
       throw Ci.nsIMsgCloudFileProvider.offlineErr;
+    }
 
     let fileHubic = this._uploadInfo[aFile.path];
-    if (!fileHubic)
+    if (!fileHubic) {
       throw Cr.NS_ERROR_FAILURE;
+    }
 
     this.requestObserver = aCallback;
 
-    let url = this._cachedSwiftEndpoint + kContainerPath + fileHubic.fileHubicEncoded;
-    let headers = [["X-Auth-Token", this._cachedSwiftToken]];
-
-    this.request = doXHRequest(url, headers, null,
-      function(aResponseText, aRequest) {
+    let options = {
+      method: "DELETE",
+      headers: [["X-Auth-Token", this._cachedSwiftToken]],
+      onLoad: function(aResponseText, aRequest) {
         this.request = null;
         this.log.info("success deleting file " + aResponseText);
 
@@ -528,11 +531,16 @@ nsHubiC.prototype = {
 
         this._deleteLink(fileHubic.fileHubic, deleteLink, deleteLink);
       }.bind(this),
-      function(aException, aResponseText, aRequest) {
+      onError: function(aException, aResponseText, aRequest) {
         this.request = null;
         this.log.info("failed deleting file response = " + aResponseText);
         aCallback.onStopRequest(null, null, Ci.nsIMsgCloudFileProvider.uploadErr);
-      }.bind(this), this, "DELETE"
+      }.bind(this),
+    };
+
+    this.request = httpRequest(
+      this._cachedSwiftEndpoint + kContainerPath + fileHubic.fileHubicEncoded,
+      options
     );
   },
 
@@ -573,7 +581,7 @@ nsHubiC.prototype = {
 
   get _cachedAccessToken() {
     let accessToken = cloudFileAccounts.getSecretValue(
-      this.accountKey, 
+      this.accountKey,
       cloudFileAccounts.kTokenRealm
     );
 
@@ -732,12 +740,15 @@ nsHubiCFileUploader.prototype = {
       }
       catch(e) { /* just use text/plain */ }
 
-      let headers = [["Content-Length", fstream.available()],
-                     ["Content-Type", mimeType],
-                     ["X-Auth-Token", this.hubic._cachedSwiftToken]];
-
-      this.request = doXHRequest(url, headers, bufStream,
-        function(aResponseText, aRequest) {
+      let options = {
+        method: "PUT",
+        postData: bufStream,
+        headers: [
+          ["Content-Length", fstream.available()],
+          ["Content-Type", mimeType],
+          ["X-Auth-Token", this.hubic._cachedSwiftToken]
+        ],
+        onLoad: function(aResponseText, aRequest) {
           this.request = null;
           this.log.info("Success putting file " + aResponseText);
           this.hubic._uploadInfo[this.file.path] = {
@@ -747,7 +758,7 @@ nsHubiCFileUploader.prototype = {
           this._getShareUrl.call(this.hubic, this.file, fileHubic,
                                  this.callback, this.requestObserver);
         }.bind(this),
-        function(aException, aResponseText, aRequest) {
+        onError: function(aException, aResponseText, aRequest) {
           this.request = null;
           this.log.info("Failed putting file response = " +
                         aRequest.status + " / " + aResponseText + " / " + aException);
@@ -755,14 +766,16 @@ nsHubiCFileUploader.prototype = {
             this.callback(this.requestObserver,
                           Ci.nsIMsgCloudFileProvider.uploadErr);
           }
-        }.bind(this), this, "PUT"
-      );
+        }.bind(this)
+      };
+
+      this.request = httpRequest(url, options);
     }.bind(this));
   },
 
   /**
    * Create upload directory if not exists
-   * It don't use doXHRequest to be able to overrideMimeType without charset
+   * It don't use httpRequest to be able to overrideMimeType without charset
    */
   createDirectory: function nsDFU_createDirectory(dir, callback) {
     this.log.info('createDirectory', dir);
@@ -830,15 +843,15 @@ nsHubiCFileUploader.prototype = {
    * Check if upload directory exists
    */
   directoryExists: function nsDFU_directoryExists(dir, callback) {
-    let headers = [["X-Auth-Token", this.hubic._cachedSwiftToken]];
-    let url = this.hubic._cachedSwiftEndpoint + kContainerPath + dir;
-    this.request = doXHRequest(url, headers, null,
-      function(aResponseText, aRequest) {
+    let options = {
+      method: 'HEAD',
+      headers: [["X-Auth-Token", this.hubic._cachedSwiftToken]],
+      onLoad: function(aResponseText, aRequest) {
         this.request = null;
         this.log.debug("Upload directory exists: " + dir);
         callback(dir, true);
       }.bind(this),
-      function(aException, aResponseText, aRequest) {
+      onError: function(aException, aResponseText, aRequest) {
         // Ensure token is still valid (should be since we check expiration date)
         if (aException.match(/401/)) {
           this.log.error('X-Auth-Token looks invalid, fetching new one');
@@ -851,7 +864,12 @@ nsHubiCFileUploader.prototype = {
         this.request = null;
         this.log.debug("Upload directory doesn't exist: " + dir, aException);
         callback(dir, false);
-      }.bind(this), this, "HEAD"
+      }.bind(this)
+    };
+
+    this.request = httpRequest(
+      this.hubic._cachedSwiftEndpoint + kContainerPath + dir,
+      options
     );
   },
 

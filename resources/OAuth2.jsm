@@ -9,7 +9,7 @@ var EXPORTED_SYMBOLS = ["OAuth2"];
 
 const {classes: Cc, interfaces: Ci, results: Cr, utils: Cu} = Components;
 
-Cu.import("resource:///modules/http.jsm");
+Cu.import("resource://gre/modules/Http.jsm");
 Cu.import("resource:///modules/Services.jsm");
 Cu.import("resource:///modules/XPCOMUtils.jsm");
 Cu.import("resource:///modules/gloda/log4moz.js");
@@ -88,8 +88,12 @@ OAuth2.prototype = {
             _active: true,
             iconURI: "",
             cancelled: function() {
-                if (!this._active)
+                if (!this._active) {
                     return;
+                }
+
+                this.account.finishAuthorizationRequest();
+                this.account.onAuthorizationFailed();
             },
 
             loaded: function (aWindow, aWebProgress) {
@@ -150,10 +154,16 @@ OAuth2.prototype = {
         this._browserRequest._listener._cleanUp();
       delete this._browserRequest;
     },
+
     onAuthorizationReceived: function(aData) {
       this.log.info("authorization received" + aData);
       let results = parseURLData(aData);
       this.requestAccessToken(results.code, OAuth2.CODE_AUTHORIZATION);
+    },
+
+    onAuthorizationFailed: function() {
+        this.connecting = false;
+        this.connectFailureCallback();
     },
 
     requestAccessToken: function requestAccessToken(aCode, aType) {
@@ -176,7 +186,14 @@ OAuth2.prototype = {
             ["Authorization", "Basic " + btoa(this.consumerKey + ':' + this.consumerSecret)]
         ];
 
-        doXHRequest(this.tokenURI, headers, params, this.onAccessTokenReceived, this.onAccessTokenFailed, this);
+        let options = {
+          postData: params,
+          headers: headers,
+          onLoad: this.onAccessTokenReceived.bind(this),
+          onError: this.onAccessTokenFailed.bind(this)
+        }
+
+        httpRequest(this.tokenURI, options);
     },
 
     onAccessTokenFailed: function onAccessTokenFailed(aData) {
