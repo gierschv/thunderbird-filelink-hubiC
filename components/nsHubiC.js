@@ -508,7 +508,7 @@ nsHubiC.prototype = {
 
     this.requestObserver = aCallback;
 
-    let url = this._cachedSwiftEndpoint + kContainerPath + fileHubic;
+    let url = this._cachedSwiftEndpoint + kContainerPath + fileHubic.fileHubicEncoded;
     let headers = [["X-Auth-Token", this._cachedSwiftToken]];
 
     this.request = doXHRequest(url, headers, null,
@@ -520,7 +520,7 @@ nsHubiC.prototype = {
           aCallback.onStopRequest(null, null, Cr.NS_OK);
         };
 
-        this._deleteLink(fileHubic, deleteLink, deleteLink);
+        this._deleteLink(fileHubic.fileHubic, deleteLink, deleteLink);
       }.bind(this),
       function(aException, aResponseText, aRequest) {
         this.request = null;
@@ -705,9 +705,10 @@ nsHubiCFileUploader.prototype = {
       }
 
       this.log.info("ready to upload file " + wwwFormUrlEncode(this.file.leafName));
-      let fileHubic = kFilesPutPath + '/' + wwwFormUrlEncode(new Date().getTime() + '-' + this.file.leafName);
-      let url = this.hubic._cachedSwiftEndpoint + kContainerPath + fileHubic;
-      
+      let fileHubic = kFilesPutPath + '/' + new Date().getTime() + '-' + this.file.leafName;
+      let fileHubicEncoded = wwwFormUrlEncode(fileHubic);
+      let url = this.hubic._cachedSwiftEndpoint + kContainerPath + fileHubicEncoded;
+
       let fileContents = "";
       let fstream = Cc["@mozilla.org/network/file-input-stream;1"]
                        .createInstance(Ci.nsIFileInputStream);
@@ -733,7 +734,10 @@ nsHubiCFileUploader.prototype = {
         function(aResponseText, aRequest) {
           this.request = null;
           this.log.info("Success putting file " + aResponseText);
-          this.hubic._uploadInfo[this.file.path] = fileHubic;
+          this.hubic._uploadInfo[this.file.path] = {
+            fileHubic: fileHubic,
+            fileHubicEncoded: fileHubicEncoded
+          };
           this._getShareUrl.call(this.hubic, this.file, fileHubic,
                                  this.callback, this.requestObserver);
         }.bind(this),
