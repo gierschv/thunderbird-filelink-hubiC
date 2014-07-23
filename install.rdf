@@ -4,11 +4,7 @@
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. --><RDF xmlns="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:em="http://www.mozilla.org/2004/em-rdf#">
   <Description about="urn:mozilla:install-manifest">
     <em:id>thunderbird-filelink-hubic@vincent.sh</em:id>
-<<<<<<< HEAD
-    <em:version>0.2.2</em:version>
-=======
-    <em:version>0.2.3</em:version>
->>>>>>> Fix comptability with Thunderbird 29.X (beta)
+    <em:version>0.3.0</em:version>
     <em:type>2</em:type>
     <em:unpack>false</em:unpack>
 
@@ -16,8 +12,8 @@
     <em:targetApplication>
       <Description>
         <em:id>{3550f703-e582-4d05-9a08-453d09bdfdc6}</em:id> <!-- Thunderbird -->
-        <em:minVersion>13.*</em:minVersion>
-        <em:maxVersion>29.*</em:maxVersion>
+        <em:minVersion>31.*</em:minVersion>
+        <em:maxVersion>33.*</em:maxVersion>
       </Description>
     </em:targetApplication>
 
