@@ -27,7 +27,7 @@ const kAuthSwiftExpiration = "hubic Swift token expiration";
 
 const kMaxFileSize = 1073741824; // hubiC, max 10G
 const kContainerPath = "/default";
-var kFilesPutPath = "/thunderbird-attachements";
+var kFilesPutPath = "/thunderbird-attachments";
 var kPublicationDelay = 30;
 
 const kAppKey = "api_hubic_GBHc2IB1k44ujyqg32bYmfBOVo2CKrpN";
